@@ -69,6 +69,16 @@ int disassemble_instruction(chunk* c, int offs) {
       return constant_instruction("constant", c, offs);
     case OP_CONSTANT_LONG:
       return long_constant_instruction("long constant", c, offs);
+    case OP_ADD:
+      return simple_instruction("add", offs);
+    case OP_SUBTRACT:
+      return simple_instruction("subtract", offs);
+    case OP_MULTIPLY:
+      return simple_instruction("multiply", offs);
+    case OP_DIVIDE:
+      return simple_instruction("divide", offs);
+    case OP_NEGATE:
+      return simple_instruction("negate", offs);
     default:
       printf("Unknown opcode %d\n", instruction);
       return offs + 1;
