@@ -34,6 +34,11 @@ static interpret_result run(vm* cvm) {
       double a = pop(cvm); \
       push(cvm, a op b); \
     }
+#define bitwise_op(op) { \
+      long b = (long)pop(cvm); \
+      long a = (long)pop(cvm); \
+      push(cvm, (double)(a op b)); \
+    }
 #define read_byte() (*cvm->ip++)
 #define read_constant() (cvm->c->constants.values[read_byte()])
 #define read_long_constant() (cvm->c->constants.values[read_byte() + (read_byte()<<8) + (read_byte()<<16)])
@@ -65,11 +70,18 @@ static interpret_result run(vm* cvm) {
         printf("\n");
         return INTERPRET_OK;
       }
-      case OP_ADD:      binary_op(+); break;
-      case OP_SUBTRACT: binary_op(-); break;
-      case OP_MULTIPLY: binary_op(*); break;
-      case OP_DIVIDE:   binary_op(/); break;
-      case OP_NEGATE:   push(cvm, -pop(cvm)); break;
+      case OP_ADD:        binary_op(+); break;
+      case OP_SUBTRACT:   binary_op(-); break;
+      case OP_MULTIPLY:   binary_op(*); break;
+      case OP_DIVIDE:     binary_op(/); break;
+      case OP_MODULO:     bitwise_op(%); break;
+      case OP_SHIFTLEFT:  bitwise_op(<<); break;
+      case OP_SHIFTRIGHT: bitwise_op(>>); break;
+      case OP_BITOR:      bitwise_op(|); break;
+      case OP_BITXOR:     bitwise_op(^); break;
+      case OP_BITAND:     bitwise_op(&); break;
+      case OP_NEGATE:     push(cvm, -pop(cvm)); break;
+      case OP_BITNOT:     push(cvm, (double)(~((long)pop(cvm)))); break;
     }
   }
 #undef binary_op
