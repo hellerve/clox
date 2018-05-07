@@ -12,7 +12,7 @@ void disassemble_chunk(chunk* c, const char* name) {
     i = disassemble_instruction(c, i);
   }
 
-  printf("========\n");
+  puts("========");
 }
 
 static int simple_instruction(const char* name, int offs) {
@@ -28,7 +28,7 @@ static int constant_instruction(const char* name, chunk* c, int offs) {
   uint8_t constant = c->code[offs+1];
   printf("%-16s %4d '", name, constant);
   print_value(c->constants.values[constant]);
-  printf("'\n");
+  puts("'");
   return offs + 2;
 }
 
@@ -36,7 +36,7 @@ static int long_constant_instruction(const char* name, chunk* c, int offs) {
   uint32_t constant = c->code[offs+1] + (c->code[offs+2]<<8) + (c->code[offs+3]<<16);
   printf("%-16s %4d '", name, constant);
   print_value(c->constants.values[constant]);
-  printf("'\n");
+  puts("'");
   return offs + 4;
 }
 
@@ -59,7 +59,7 @@ int disassemble_instruction(chunk* c, int offs) {
   int prev_line = get_line(c->lines, c->lines_count, offs-1);
 
   printf("%04d ", offs);
-  if (line == prev_line) printf("   | ");
+  if (line == prev_line) fputs("   | ", stdout);
   else printf("%4d ", line);
 
   switch (instruction) {
@@ -84,3 +84,14 @@ int disassemble_instruction(chunk* c, int offs) {
       return offs + 1;
   }
 }
+
+void print_trace(vm* cvm) {
+    fputs("          ", stdout);
+    for (value* slot = cvm->stack; slot < cvm->stack_top; slot++) {
+      fputs("[ ", stdout);
+      print_value(*slot);
+      fputs(" ]", stdout);
+    }
+    puts("");
+    disassemble_instruction(cvm->c, (int)(cvm->ip - cvm->c->code));
+  }

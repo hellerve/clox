@@ -2,6 +2,7 @@
 #include <stdlib.h>
 
 #include "common.h"
+#include "compiler.h"
 #include "debug.h"
 #include "vm.h"
 
@@ -42,17 +43,12 @@ static interpret_result run(vm* cvm) {
 #define read_byte() (*cvm->ip++)
 #define read_constant() (cvm->c->constants.values[read_byte()])
 #define read_long_constant() (cvm->c->constants.values[read_byte() + (read_byte()<<8) + (read_byte()<<16)])
+
   for (;;) {
 #ifdef DEBUG_TRACE_EXECUTION
-    printf("          ");
-    for (value* slot = cvm->stack; slot < cvm->stack_top; slot++) {
-      printf("[ ");
-      print_value(*slot);
-      printf(" ]");
-    }
-    printf("\n");
-    disassemble_instruction(cvm->c, (int)(cvm->ip - cvm->c->code));
+    print_trace(cvm);
 #endif
+
     uint8_t instruction;
     switch (instruction = read_byte()) {
       case OP_CONSTANT: {
@@ -67,7 +63,7 @@ static interpret_result run(vm* cvm) {
       }
       case OP_RETURN: {
         print_value(pop(cvm));
-        printf("\n");
+        puts("");
         return INTERPRET_OK;
       }
       case OP_ADD:        binary_op(+); break;
@@ -84,15 +80,16 @@ static interpret_result run(vm* cvm) {
       case OP_BITNOT:     push(cvm, (double)(~((long)pop(cvm)))); break;
     }
   }
+
 #undef binary_op
 #undef read_byte
 #undef read_constant
 #undef read_long_constant
 }
 
-interpret_result interpret(vm* cvm, chunk* c) {
-  cvm->c = c;
-  cvm->ip = cvm->c->code;
+interpret_result interpret(vm* cvm, const char* source) {
+  compile(source);
+  return INTERPRET_OK;
 
   return run(cvm);
 }
