@@ -88,8 +88,19 @@ static interpret_result run(vm* cvm) {
 }
 
 interpret_result interpret(vm* cvm, const char* source) {
-  compile(source);
-  return INTERPRET_OK;
+  chunk c;
+  init_chunk(&c);
+  if (!compile(source, &c)) {
+    free_chunk(&c);
+    return INTERPRET_COMPILE_ERROR;
+  }
 
-  return run(cvm);
+  cvm->c = &c;
+  cvm->ip = cvm->c->code;
+
+  interpret_result res = run(cvm);
+
+  free_chunk(&c);
+
+  return res;
 }
