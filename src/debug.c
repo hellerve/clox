@@ -21,7 +21,11 @@ static int simple_instruction(const char* name, int offs) {
 }
 
 void print_value(value v) {
-  printf("%g", v);
+  switch (v.type) {
+    case BOOL:   printf(AS_BOOL(v) ? "true" : "false"); break;
+    case NIL:   printf("nil"); break;
+    case NUMBER: printf("%g", AS_NUMBER(v)); break;
+  }
 }
 
 static int constant_instruction(const char* name, chunk* c, int offs) {
@@ -79,6 +83,20 @@ int disassemble_instruction(chunk* c, int offs) {
       return simple_instruction("divide", offs);
     case OP_NEGATE:
       return simple_instruction("negate", offs);
+    case OP_NIL:
+      return simple_instruction("nil", offs);
+    case OP_TRUE:
+      return simple_instruction("true", offs);
+    case OP_FALSE:
+      return simple_instruction("false", offs);
+    case OP_NOT:
+      return simple_instruction("not", offs);
+    case OP_EQUAL:
+      return simple_instruction("eq", offs);
+    case OP_GREATER:
+      return simple_instruction("gt", offs);
+    case OP_LESS:
+      return simple_instruction("lt", offs);
     default:
       printf("Unknown opcode %d\n", instruction);
       return offs + 1;

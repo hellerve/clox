@@ -24,3 +24,13 @@ void free_value_array(value_array* array) {
   FREE_ARRAY(value, array->values, array->capacity);
   init_value_array(array);
 }
+
+bool values_equal(value a, value b) {
+  if (a.type != b.type) return false;
+
+  switch (a.type) {
+    case BOOL:   return AS_BOOL(a) == AS_BOOL(b);
+    case NIL:    return true;
+    case NUMBER: return AS_NUMBER(a) == AS_NUMBER(b);
+  }
+}

@@ -115,8 +115,8 @@ void expression(parser* p, scanner* s) {
 }
 
 static void number(parser* p, scanner* s) {
-  value v = strtod(p->prev.start, NULL);
-  emit_constant(p, v);
+  double v = strtod(p->prev.start, NULL);
+  emit_constant(p, NUMBER_VAL(v));
 }
 
 static void grouping(parser* p, scanner* s) {
@@ -131,6 +131,7 @@ static void unary(parser* p, scanner* s) {
 
   switch(op) {
     case TOKEN_MINUS: emit_byte(p, OP_NEGATE); break;
+    case TOKEN_BANG: emit_byte(p, OP_NOT); break;
     default: return;
   }
 }
@@ -142,10 +143,25 @@ static void binary(parser* p, scanner* s) {
   parse_precedence(p, s, (precedence)(rule->prec + 1));
 
   switch (op) {
+    case TOKEN_BANG_EQUAL:    emit_bytes(p, OP_EQUAL, OP_NOT); break;
+    case TOKEN_EQUAL_EQUAL:   emit_byte(p, OP_EQUAL); break;
+    case TOKEN_GREATER:       emit_byte(p, OP_GREATER); break;
+    case TOKEN_GREATER_EQUAL: emit_bytes(p, OP_LESS, OP_NOT); break;
+    case TOKEN_LESS:          emit_byte(p, OP_LESS); break;
+    case TOKEN_LESS_EQUAL:    emit_bytes(p, OP_GREATER, OP_NOT); break;
     case TOKEN_PLUS:  emit_byte(p, OP_ADD); break;
     case TOKEN_MINUS: emit_byte(p, OP_SUBTRACT); break;
     case TOKEN_STAR:  emit_byte(p, OP_MULTIPLY); break;
     case TOKEN_SLASH: emit_byte(p, OP_DIVIDE); break;
+    default: return;
+  }
+}
+
+static void literal(parser* p, scanner* s) {
+  switch (p->prev.type) {
+    case TOKEN_FALSE:  emit_byte(p, OP_FALSE); break;
+    case TOKEN_TRUE:  emit_byte(p, OP_TRUE); break;
+    case TOKEN_NIL:  emit_byte(p, OP_NIL); break;
     default: return;
   }
 }
@@ -162,31 +178,31 @@ parse_rule rules[] = {
   { NULL,     NULL,    PREC_NONE },       // TOKEN_SEMICOLON
   { NULL,     binary,  PREC_FACTOR },     // TOKEN_SLASH
   { NULL,     binary,  PREC_FACTOR },     // TOKEN_STAR
-  { NULL,     NULL,    PREC_NONE },       // TOKEN_BANG
-  { NULL,     NULL,    PREC_EQUALITY },   // TOKEN_BANG_EQUAL
+  { unary,    NULL,    PREC_NONE },       // TOKEN_BANG
+  { NULL,     binary,  PREC_EQUALITY },   // TOKEN_BANG_EQUAL
   { NULL,     NULL,    PREC_NONE },       // TOKEN_EQUAL
-  { NULL,     NULL,    PREC_EQUALITY },   // TOKEN_EQUAL_EQUAL
-  { NULL,     NULL,    PREC_COMPARISON }, // TOKEN_GREATER
-  { NULL,     NULL,    PREC_COMPARISON }, // TOKEN_GREATER_EQUAL
-  { NULL,     NULL,    PREC_COMPARISON }, // TOKEN_LESS
-  { NULL,     NULL,    PREC_COMPARISON }, // TOKEN_LESS_EQUAL
+  { NULL,     binary,  PREC_EQUALITY },   // TOKEN_EQUAL_EQUAL
+  { NULL,     binary,  PREC_COMPARISON }, // TOKEN_GREATER
+  { NULL,     binary,  PREC_COMPARISON }, // TOKEN_GREATER_EQUAL
+  { NULL,     binary,  PREC_COMPARISON }, // TOKEN_LESS
+  { NULL,     binary,  PREC_COMPARISON }, // TOKEN_LESS_EQUAL
   { NULL,     NULL,    PREC_NONE },       // TOKEN_IDENTIFIER
   { NULL,     NULL,    PREC_NONE },       // TOKEN_STRING
   { number,   NULL,    PREC_NONE },       // TOKEN_NUMBER
   { NULL,     NULL,    PREC_AND },        // TOKEN_AND
   { NULL,     NULL,    PREC_NONE },       // TOKEN_CLASS
   { NULL,     NULL,    PREC_NONE },       // TOKEN_ELSE
-  { NULL,     NULL,    PREC_NONE },       // TOKEN_FALSE
+  { literal,  NULL,    PREC_NONE },       // TOKEN_FALSE
   { NULL,     NULL,    PREC_NONE },       // TOKEN_FUN
   { NULL,     NULL,    PREC_NONE },       // TOKEN_FOR
   { NULL,     NULL,    PREC_NONE },       // TOKEN_IF
-  { NULL,     NULL,    PREC_NONE },       // TOKEN_NIL
+  { literal,  NULL,    PREC_NONE },       // TOKEN_NIL
   { NULL,     NULL,    PREC_OR },         // TOKEN_OR
   { NULL,     NULL,    PREC_NONE },       // TOKEN_PRINT
   { NULL,     NULL,    PREC_NONE },       // TOKEN_RETURN
   { NULL,     NULL,    PREC_NONE },       // TOKEN_SUPER
   { NULL,     NULL,    PREC_NONE },       // TOKEN_THIS
-  { NULL,     NULL,    PREC_NONE },       // TOKEN_TRUE
+  { literal,  NULL,    PREC_NONE },       // TOKEN_TRUE
   { NULL,     NULL,    PREC_NONE },       // TOKEN_VAR
   { NULL,     NULL,    PREC_NONE },       // TOKEN_WHILE
   { NULL,     NULL,    PREC_NONE },       // TOKEN_ERROR
