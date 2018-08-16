@@ -132,6 +132,7 @@ static void unary(parser* p, scanner* s) {
   switch(op) {
     case TOKEN_MINUS: emit_byte(p, OP_NEGATE); break;
     case TOKEN_BANG: emit_byte(p, OP_NOT); break;
+    case TOKEN_TILDE: emit_byte(p, OP_BITNOT); break;
     default: return;
   }
 }
@@ -149,10 +150,15 @@ static void binary(parser* p, scanner* s) {
     case TOKEN_GREATER_EQUAL: emit_bytes(p, OP_LESS, OP_NOT); break;
     case TOKEN_LESS:          emit_byte(p, OP_LESS); break;
     case TOKEN_LESS_EQUAL:    emit_bytes(p, OP_GREATER, OP_NOT); break;
-    case TOKEN_PLUS:  emit_byte(p, OP_ADD); break;
-    case TOKEN_MINUS: emit_byte(p, OP_SUBTRACT); break;
-    case TOKEN_STAR:  emit_byte(p, OP_MULTIPLY); break;
-    case TOKEN_SLASH: emit_byte(p, OP_DIVIDE); break;
+    case TOKEN_PLUS:          emit_byte(p, OP_ADD); break;
+    case TOKEN_MINUS:         emit_byte(p, OP_SUBTRACT); break;
+    case TOKEN_STAR:          emit_byte(p, OP_MULTIPLY); break;
+    case TOKEN_SLASH:         emit_byte(p, OP_DIVIDE); break;
+    case TOKEN_HAT:           emit_byte(p, OP_BITXOR); break;
+    case TOKEN_PIPE:          emit_byte(p, OP_BITAND); break;
+    case TOKEN_AMP:           emit_byte(p, OP_BITOR); break;
+    case TOKEN_SHIFTLEFT:     emit_byte(p, OP_SHIFTLEFT); break;
+    case TOKEN_SHIFTRIGHT:     emit_byte(p, OP_SHIFTRIGHT); break;
     default: return;
   }
 }
@@ -186,6 +192,12 @@ parse_rule rules[] = {
   { NULL,     binary,  PREC_COMPARISON }, // TOKEN_GREATER_EQUAL
   { NULL,     binary,  PREC_COMPARISON }, // TOKEN_LESS
   { NULL,     binary,  PREC_COMPARISON }, // TOKEN_LESS_EQUAL
+  { NULL,     binary,  PREC_FACTOR },     // TOKEN_HAT
+  { unary,    NULL,    PREC_FACTOR },     // TOKEN_TILDE
+  { NULL,     binary,  PREC_FACTOR },     // TOKEN_PIPE
+  { NULL,     binary,  PREC_FACTOR },     // TOKEN_AMP
+  { NULL,     binary,  PREC_FACTOR },     // TOKEN_SHIFTLEFT
+  { NULL,     binary,  PREC_FACTOR },     // TOKEN_SHIFTRIGHT
   { NULL,     NULL,    PREC_NONE },       // TOKEN_IDENTIFIER
   { NULL,     NULL,    PREC_NONE },       // TOKEN_STRING
   { number,   NULL,    PREC_NONE },       // TOKEN_NUMBER
