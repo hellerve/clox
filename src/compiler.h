@@ -2,7 +2,8 @@
 #define clox_compiler_h
 
 #include "chunk.h"
+#include "vm.h"
 
-bool compile(const char*, chunk*);
+bool compile(vm* cvm, const char*, chunk*);
 
 #endif

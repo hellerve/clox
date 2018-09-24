@@ -1,10 +1,12 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "common.h"
 #include "compiler.h"
 #include "debug.h"
+#include "memory.h"
 #include "vm.h"
 
 
@@ -15,10 +17,32 @@ void reset_stack(vm* cvm) {
 vm* init_vm() {
   vm* res = malloc(sizeof(vm));
   reset_stack(res);
+  res->objs = NULL;
   return res;
 }
 
+static void free_object(obj* o) {
+  switch (o->type) {
+    case STRING: {
+      obj_str* str = (obj_str*)o;
+      FREE_ARRAY(char, str->chars, str->len + 1);
+      FREE(obj_str, o);
+      break;
+    }
+  }
+}
+
+void free_objects(vm* cvm) {
+  obj* o = cvm->objs;
+  while (o) {
+    obj* next = o->next;
+    free_object(o);
+    o = next;
+  }
+}
+
 void free_vm(vm* cvm) {
+  free_objects(cvm);
   free(cvm);
 }
 
@@ -51,6 +75,20 @@ static value peek(vm* cvm, int distance) {
 
 static bool is_falsy(value v) {
   return IS_NIL(v) || (IS_BOOL(v) && !AS_BOOL(v));
+}
+
+static void concatenate(vm* cvm) {
+  obj_str* b = AS_STRING(pop(cvm));
+  obj_str* a = AS_STRING(pop(cvm));
+
+  int len = a->len + b->len;
+  char* chars = ALLOCATE(char, len + 1);
+  memcpy(chars, a->chars, a->len);
+  memcpy(chars + a->len, b->chars, b->len);
+  chars[len] = '\0';
+
+  obj_str* result = take_str(cvm, chars, len);
+  push(cvm, OBJ_VAL(result));
 }
 
 static interpret_result run(vm* cvm) {
@@ -105,7 +143,17 @@ static interpret_result run(vm* cvm) {
       case OP_NIL:        push(cvm, NIL_VAL); break;
       case OP_TRUE:       push(cvm, BOOL_VAL(true)); break;
       case OP_FALSE:      push(cvm, BOOL_VAL(false)); break;
-      case OP_ADD:        binary_op(NUMBER_VAL, +); break;
+      case OP_ADD: {
+        if (IS_STRING(peek(cvm, 0)) && IS_STRING(peek(cvm, 1))) {
+          concatenate(cvm);
+        } else if (IS_NUMBER(peek(cvm, 0)) && IS_NUMBER(peek(cvm, 1))) {
+          binary_op(NUMBER_VAL, +); break;
+        } else {
+          runtime_error(cvm, "Operands must be two numbers or two strings.");
+          return INTERPRET_RUNTIME_ERROR;
+        }
+        break;
+      }
       case OP_SUBTRACT:   binary_op(NUMBER_VAL, -); break;
       case OP_MULTIPLY:   binary_op(NUMBER_VAL, *); break;
       case OP_DIVIDE:     binary_op(NUMBER_VAL, /); break;
@@ -144,7 +192,7 @@ static interpret_result run(vm* cvm) {
 interpret_result interpret(vm* cvm, const char* source) {
   chunk c;
   init_chunk(&c);
-  if (!compile(source, &c)) {
+  if (!compile(cvm, source, &c)) {
     free_chunk(&c);
     return INTERPRET_COMPILE_ERROR;
   }

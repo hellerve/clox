@@ -17,5 +17,6 @@ int main(int argc, const char** argv) {
   }
 
   free_vm(cvm);
+
   return 0;
 }

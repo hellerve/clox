@@ -25,6 +25,7 @@ void print_value(value v) {
     case BOOL:   printf(AS_BOOL(v) ? "true" : "false"); break;
     case NIL:   printf("nil"); break;
     case NUMBER: printf("%g", AS_NUMBER(v)); break;
+    case OBJ:    print_obj(v); break;
   }
 }
 

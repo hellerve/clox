@@ -10,6 +10,7 @@
 #endif
 
 typedef struct {
+  vm* cvm;
   token cur;
   token prev;
   bool errored;
@@ -119,6 +120,12 @@ static void number(parser* p, scanner* s) {
   emit_constant(p, NUMBER_VAL(v));
 }
 
+static void string(parser* p, scanner* s) {
+  emit_constant(p, OBJ_VAL(copy_str(p->cvm,
+                                    p->prev.start + 1,
+                                    p->prev.length - 2)));
+}
+
 static void grouping(parser* p, scanner* s) {
   expression(p, s);
   consume(p, s, TOKEN_RIGHT_PAREN, "Expect ')' after expression.");
@@ -199,7 +206,7 @@ parse_rule rules[] = {
   { NULL,     binary,  PREC_FACTOR },     // TOKEN_SHIFTLEFT
   { NULL,     binary,  PREC_FACTOR },     // TOKEN_SHIFTRIGHT
   { NULL,     NULL,    PREC_NONE },       // TOKEN_IDENTIFIER
-  { NULL,     NULL,    PREC_NONE },       // TOKEN_STRING
+  { string,   NULL,    PREC_NONE },       // TOKEN_STRING
   { number,   NULL,    PREC_NONE },       // TOKEN_NUMBER
   { NULL,     NULL,    PREC_AND },        // TOKEN_AND
   { NULL,     NULL,    PREC_NONE },       // TOKEN_CLASS
@@ -243,11 +250,12 @@ static void parse_precedence(parser* p, scanner* s, precedence prec) {
   }
 }
 
-bool compile(const char* source, chunk* c) {
+bool compile(vm* cvm, const char* source, chunk* c) {
   scanner* s = init_scanner(source);
   parser p;
   p.errored = false;
   p.panic_mode = false;
+  p.cvm = cvm;
   comp = c;
 
   advance(&p, s);

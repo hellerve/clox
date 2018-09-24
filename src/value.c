@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 
 #include "memory.h"
 #include "value.h"
@@ -32,5 +33,12 @@ bool values_equal(value a, value b) {
     case BOOL:   return AS_BOOL(a) == AS_BOOL(b);
     case NIL:    return true;
     case NUMBER: return AS_NUMBER(a) == AS_NUMBER(b);
+    case OBJ:
+    {
+      obj_str* a_str = AS_STRING(a);
+      obj_str* b_str = AS_STRING(b);
+      return a_str->len == b_str->len &&
+          !memcmp(a_str->chars, b_str->chars, a_str->len);
+    }
   }
 }
