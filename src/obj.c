@@ -1,3 +1,4 @@
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -23,10 +24,11 @@ static obj* allocate_obj(vm* cvm, size_t size, obj_type type) {
   return o;
 }
 
-static obj_str* allocate_str(vm* cvm, char* chars, int length) {
-  obj_str* string = ALLOCATE_OBJ(cvm, obj_str, STRING);
-  string->len = length;
-  string->chars = chars;
+static obj_str* allocate_str(vm* cvm, char* chars, int len) {
+  obj_str* string = (obj_str*)allocate_obj(cvm, offsetof(obj_str, chars)+len+1, STRING);
+  string->len = len;
+  for (int i = 0; i < len; i++) string->chars[i] = chars[i];
+  string->chars[len] = '\0';
 
   return string;
 }
@@ -36,9 +38,5 @@ obj_str* take_str(void* cvm, char* chars, int len) {
 }
 
 obj_str* copy_str(void* cvm, const char* chars, int len) {
-  char* heap_chars = ALLOCATE(char, len + 1);
-  memcpy(heap_chars, chars, len);
-  heap_chars[len] = '\0';
-
-  return allocate_str((vm*)cvm, heap_chars, len);
+  return allocate_str((vm*)cvm, (char*)chars, len);
 }

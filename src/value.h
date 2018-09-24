@@ -15,7 +15,7 @@ typedef struct obj {
 typedef struct obj_str {
   obj o;
   int len;
-  char* chars;
+  char chars[];
 } obj_str;
 
 typedef enum {

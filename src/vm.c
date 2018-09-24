@@ -1,4 +1,5 @@
 #include <stdarg.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -24,9 +25,7 @@ vm* init_vm() {
 static void free_object(obj* o) {
   switch (o->type) {
     case STRING: {
-      obj_str* str = (obj_str*)o;
-      FREE_ARRAY(char, str->chars, str->len + 1);
-      FREE(obj_str, o);
+      reallocate(o, offsetof(obj_str, chars)+((obj_str*)o)->len+1, 0);
       break;
     }
   }
@@ -88,6 +87,7 @@ static void concatenate(vm* cvm) {
   chars[len] = '\0';
 
   obj_str* result = take_str(cvm, chars, len);
+  FREE_ARRAY(char, chars, len+1);
   push(cvm, OBJ_VAL(result));
 }
 
