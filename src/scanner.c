@@ -75,6 +75,26 @@ static token string(scanner* s) {
   return make_token(s, TOKEN_STRING);
 }
 
+static token character(scanner* s) {
+  char c;
+  bool consumed = false;
+  while (!consumed && peek(s) != '\'' && !is_at_end(s)) {
+    if (peek(s) == '\n') s->line++;
+    c = advance(s);
+    if (c == '\\') {
+      if (is_at_end(s)) return error_token(s, "Unterminated character string.");
+      advance(s);
+    } else {
+      consumed = true;
+    }
+  }
+
+  if (is_at_end(s)) return error_token(s, "Unterminated character string.");
+
+  advance(s);
+  return make_token(s, TOKEN_CHAR);
+}
+
 static void skip_whitespace(scanner* s) {
   for (;;) {
     char c = peek(s);
@@ -212,6 +232,7 @@ token scan_token(scanner* s) {
       return make_token(s, match(s, '=') ?
                             TOKEN_GREATER_EQUAL :
                             match(s, '<') ? TOKEN_SHIFTRIGHT : TOKEN_GREATER);
+    case '\'': return character(s);
     case '"': return string(s);
   }
 

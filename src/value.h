@@ -22,6 +22,7 @@ typedef enum {
   BOOL,
   NIL,
   NUMBER,
+  CHAR,
   OBJ,
 } value_type;
 
@@ -29,6 +30,7 @@ typedef struct {
   value_type type;
   union {
     bool boolean;
+    char chr;
     double num;
     obj* o;
   } as;
@@ -37,15 +39,18 @@ typedef struct {
 #define BOOL_VAL(v)   ((value){ BOOL, { .boolean = v } })
 #define NIL_VAL       ((value){ NIL, { .num = 0 } })
 #define NUMBER_VAL(v) ((value){ NUMBER, { .num = v } })
+#define CHAR_VAL(v)   ((value){ CHAR, { .chr = v } })
 #define OBJ_VAL(v)    ((value){ OBJ, { .o = (obj*)v }})
 
 #define AS_BOOL(v)    ((v).as.boolean)
 #define AS_NUMBER(v)  ((v).as.num)
+#define AS_CHAR(v)    ((v).as.chr)
 #define AS_OBJ(v)     ((v).as.o)
 
 #define IS_BOOL(v)    ((v).type == BOOL)
 #define IS_NIL(v)     ((v).type == NIL)
 #define IS_NUMBER(v)  ((v).type == NUMBER)
+#define IS_CHAR(v)  ((v).type == CHAR)
 #define IS_OBJ(v)  ((v).type == OBJ)
 
 typedef struct {

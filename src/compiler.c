@@ -120,6 +120,11 @@ static void number(parser* p, scanner* s) {
   emit_constant(p, NUMBER_VAL(v));
 }
 
+static void chr(parser* p, scanner* s) {
+  char v = p->prev.start[p->prev.length-2];
+  emit_constant(p, CHAR_VAL(v));
+}
+
 static void string(parser* p, scanner* s) {
   emit_constant(p, OBJ_VAL(copy_str(p->cvm,
                                     p->prev.start + 1,
@@ -208,6 +213,7 @@ parse_rule rules[] = {
   { NULL,     NULL,    PREC_NONE },       // TOKEN_IDENTIFIER
   { string,   NULL,    PREC_NONE },       // TOKEN_STRING
   { number,   NULL,    PREC_NONE },       // TOKEN_NUMBER
+  { chr,      NULL,    PREC_NONE },       // TOKEN_CHR
   { NULL,     NULL,    PREC_AND },        // TOKEN_AND
   { NULL,     NULL,    PREC_NONE },       // TOKEN_CLASS
   { NULL,     NULL,    PREC_NONE },       // TOKEN_ELSE

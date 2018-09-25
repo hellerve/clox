@@ -33,6 +33,7 @@ bool values_equal(value a, value b) {
     case BOOL:   return AS_BOOL(a) == AS_BOOL(b);
     case NIL:    return true;
     case NUMBER: return AS_NUMBER(a) == AS_NUMBER(b);
+    case CHAR:   return AS_CHAR(a) == AS_CHAR(b);
     case OBJ:
     {
       obj_str* a_str = AS_STRING(a);

@@ -23,8 +23,9 @@ static int simple_instruction(const char* name, int offs) {
 void print_value(value v) {
   switch (v.type) {
     case BOOL:   printf(AS_BOOL(v) ? "true" : "false"); break;
-    case NIL:   printf("nil"); break;
+    case NIL:    printf("nil"); break;
     case NUMBER: printf("%g", AS_NUMBER(v)); break;
+    case CHAR:   printf("%c", AS_CHAR(v)); break;
     case OBJ:    print_obj(v); break;
   }
 }
