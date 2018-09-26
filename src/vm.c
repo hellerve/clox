@@ -91,6 +91,32 @@ static void concatenate(vm* cvm) {
   push(cvm, OBJ_VAL(result));
 }
 
+static void concatenate_str_chr(vm* cvm) {
+  obj_str* b = AS_STRING(pop(cvm));
+  char a = AS_CHAR(pop(cvm));
+  obj_str* a_str = take_str(cvm, &a, 1);
+  push(cvm, OBJ_VAL(a_str));
+  push(cvm, OBJ_VAL(b));
+  concatenate(cvm);
+}
+
+static void concatenate_chr_str(vm* cvm) {
+  char a = AS_CHAR(pop(cvm));
+  obj_str* a_str = take_str(cvm, &a, 1);
+  push(cvm, OBJ_VAL(a_str));
+  concatenate(cvm);
+}
+
+static void concatenate_chr_chr(vm* cvm) {
+  char a = AS_CHAR(pop(cvm));
+  char b = AS_CHAR(pop(cvm));
+  obj_str* a_str = take_str(cvm, &a, 1);
+  obj_str* b_str = take_str(cvm, &b, 1);
+  push(cvm, OBJ_VAL(b_str));
+  push(cvm, OBJ_VAL(a_str));
+  concatenate(cvm);
+}
+
 static interpret_result run(vm* cvm) {
 #define binary_op(value_type, op) { \
       if (!IS_NUMBER(peek(cvm, 0)) || !IS_NUMBER(peek(cvm, 1))) { \
@@ -146,6 +172,12 @@ static interpret_result run(vm* cvm) {
       case OP_ADD: {
         if (IS_STRING(peek(cvm, 0)) && IS_STRING(peek(cvm, 1))) {
           concatenate(cvm);
+        } else if (IS_STRING(peek(cvm, 0)) && IS_CHAR(peek(cvm, 1))) {
+          concatenate_str_chr(cvm);
+        } else if (IS_CHAR(peek(cvm, 0)) && IS_STRING(peek(cvm, 1))) {
+          concatenate_chr_str(cvm);
+        } else if (IS_CHAR(peek(cvm, 0)) && IS_CHAR(peek(cvm, 1))) {
+          concatenate_chr_chr(cvm);
         } else if (IS_NUMBER(peek(cvm, 0)) && IS_NUMBER(peek(cvm, 1))) {
           binary_op(NUMBER_VAL, +); break;
         } else {
