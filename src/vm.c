@@ -19,6 +19,7 @@ vm* init_vm() {
   vm* res = malloc(sizeof(vm));
   reset_stack(res);
   res->objs = NULL;
+  init_table(&res->strings);
   return res;
 }
 
@@ -41,6 +42,7 @@ void free_objects(vm* cvm) {
 }
 
 void free_vm(vm* cvm) {
+  free_table(&cvm->strings);
   free_objects(cvm);
   free(cvm);
 }

@@ -14,6 +14,7 @@ typedef struct obj {
 
 typedef struct obj_str {
   obj o;
+  uint32_t hash;
   int len;
   char chars[];
 } obj_str;

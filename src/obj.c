@@ -24,19 +24,42 @@ static obj* allocate_obj(vm* cvm, size_t size, obj_type type) {
   return o;
 }
 
-static obj_str* allocate_str(vm* cvm, char* chars, int len) {
+static obj_str* allocate_str(vm* cvm, char* chars, int len, uint32_t hash) {
   obj_str* string = (obj_str*)allocate_obj(cvm, offsetof(obj_str, chars)+len+1, STRING);
   string->len = len;
   for (int i = 0; i < len; i++) string->chars[i] = chars[i];
   string->chars[len] = '\0';
+  string->hash = hash;
+
+  table_set(&cvm->strings, string, NIL_VAL);
 
   return string;
 }
 
+static uint32_t hash_str(const char* key, int len) {
+  uint32_t hash = 2166136261u;
+
+  for (int i = 0; i < len; i++) {
+    hash ^= key[i];
+    hash *= 16777619;
+  }
+
+  return hash;
+}
+
 obj_str* take_str(void* cvm, char* chars, int len) {
-  return allocate_str((vm*)cvm, chars, len);
+  uint32_t hash = hash_str(chars, len);
+  obj_str* interned = table_find_str(&vm.strings, chars, len, hash);
+  if (interned) {
+    FREE_ARRAY(char, chars, length);
+    return interned;
+  }
+  return allocate_str((vm*)cvm, chars, len, hash);
 }
 
 obj_str* copy_str(void* cvm, const char* chars, int len) {
-  return allocate_str((vm*)cvm, (char*)chars, len);
+  uint32_t hash = hash_str(chars, len);
+  obj_str* interned = table_find_str(&vm.strings, chars, len, hash);
+  if (interned) return interned;
+  return allocate_str((vm*)cvm, (char*)chars, len, hash);
 }

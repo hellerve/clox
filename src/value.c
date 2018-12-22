@@ -34,12 +34,6 @@ bool values_equal(value a, value b) {
     case NIL:    return true;
     case NUMBER: return AS_NUMBER(a) == AS_NUMBER(b);
     case CHAR:   return AS_CHAR(a) == AS_CHAR(b);
-    case OBJ:
-    {
-      obj_str* a_str = AS_STRING(a);
-      obj_str* b_str = AS_STRING(b);
-      return a_str->len == b_str->len &&
-          !memcmp(a_str->chars, b_str->chars, a_str->len);
-    }
+    case OBJ:    return AS_OBJ(a) == AS_OBJ(b);
   }
 }
