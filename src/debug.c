@@ -99,6 +99,16 @@ int disassemble_instruction(chunk* c, int offs) {
       return simple_instruction("gt", offs);
     case OP_LESS:
       return simple_instruction("lt", offs);
+    case OP_PRINT:
+      return simple_instruction("print", offs);
+    case OP_POP:
+      return simple_instruction("pop", offs);
+    case OP_DEFINE_GLOBAL:
+      return constant_instruction("define global", c, offs);
+    case OP_GET_GLOBAL:
+      return constant_instruction("get global", c, offs);
+    case OP_SET_GLOBAL:
+      return constant_instruction("set global", c, offs);
     default:
       printf("Unknown opcode %d\n", instruction);
       return offs + 1;

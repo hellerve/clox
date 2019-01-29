@@ -20,6 +20,7 @@ vm* init_vm() {
   reset_stack(res);
   res->objs = NULL;
   init_table(&res->strings);
+  init_table(&res->globals);
   return res;
 }
 
@@ -43,6 +44,7 @@ void free_objects(vm* cvm) {
 
 void free_vm(vm* cvm) {
   free_table(&cvm->strings);
+  free_table(&cvm->globals);
   free_objects(cvm);
   free(cvm);
 }
@@ -137,6 +139,7 @@ static interpret_result run(vm* cvm) {
 #define read_byte() (*cvm->ip++)
 #define read_constant() (cvm->c->constants.values[read_byte()])
 #define read_long_constant() (cvm->c->constants.values[read_byte() + (read_byte()<<8) + (read_byte()<<16)])
+#define read_string() (AS_STRING(read_constant()))
 
   for (;;) {
 #ifdef DEBUG_TRACE_EXECUTION
@@ -155,9 +158,13 @@ static interpret_result run(vm* cvm) {
         push(cvm, constant);
         break;
       }
-      case OP_RETURN: {
+      case OP_PRINT: {
         print_value(pop(cvm));
         puts("");
+        break;
+      }
+      case OP_RETURN: {
+        // Exeunt.
         return INTERPRET_OK;
       }
       case OP_EQUAL: {
@@ -171,6 +178,36 @@ static interpret_result run(vm* cvm) {
       case OP_NIL:        push(cvm, NIL_VAL); break;
       case OP_TRUE:       push(cvm, BOOL_VAL(true)); break;
       case OP_FALSE:      push(cvm, BOOL_VAL(false)); break;
+      case OP_POP:        pop(cvm); break;
+      case OP_GET_GLOBAL: {
+        obj_str* name = read_string();
+        value v;
+
+        if (!table_get(&cvm->globals, name, &v)) {
+          runtime_error(cvm, "Undefined variable '%s'.", name->chars);
+          return INTERPRET_RUNTIME_ERROR;
+        }
+        push(cvm, v);
+        break;
+      }
+      case OP_DEFINE_GLOBAL: {
+        obj_str* name = read_string();
+        if (!table_set(&cvm->globals, name, peek(cvm, 0))) {
+          runtime_error(cvm, "Redefined variable '%s'.", name->chars);
+          return INTERPRET_RUNTIME_ERROR;
+        }
+        pop(cvm);
+        break;
+      }
+      case OP_SET_GLOBAL: {
+        obj_str* name = read_string();
+        if (table_set(&cvm->globals, name, peek(cvm, 0))) {
+          runtime_error(cvm, "Undefined variable '%s'.", name->chars);
+          return INTERPRET_RUNTIME_ERROR;
+        }
+        pop(cvm);
+        break;
+      }
       case OP_ADD: {
         if (IS_STRING(peek(cvm, 0)) && IS_STRING(peek(cvm, 1))) {
           concatenate(cvm);
@@ -221,6 +258,7 @@ static interpret_result run(vm* cvm) {
 #undef read_byte
 #undef read_constant
 #undef read_long_constant
+#undef read_string
 }
 
 interpret_result interpret(vm* cvm, const char* source) {

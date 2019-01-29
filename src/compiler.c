@@ -31,7 +31,7 @@ typedef enum {
   PREC_PRIMARY
 } precedence;
 
-typedef void (*parse_fn)(parser*, scanner*);
+typedef void (*parse_fn)(parser*, scanner*, bool);
 
 typedef struct {
   parse_fn prefix;
@@ -86,6 +86,16 @@ static void consume(parser* p, scanner* s, token_type type, const char* msg) {
   error_at_current(p, msg);
 }
 
+static bool check(parser* p, token_type type) {
+  return p->cur.type == type;
+}
+
+static bool match(parser* p, scanner* s, token_type type) {
+  if (!check(p, type)) return false;
+  advance(p, s);
+  return true;
+}
+
 static void emit_byte(parser* p, uint8_t byte) {
   write_chunk(cur_chunk(), byte, p->prev.line);
 }
@@ -108,6 +118,10 @@ static void emit_constant(parser* p, value v) {
   write_constant(cur_chunk(), v, p->prev.line);
 }
 
+static int make_constant(parser* p, value v) {
+  return add_constant(cur_chunk(), v);
+}
+
 static void parse_precedence(parser*, scanner*, precedence);
 static parse_rule* get_rule(token_type type);
 
@@ -115,28 +129,28 @@ void expression(parser* p, scanner* s) {
   parse_precedence(p, s, PREC_ASSIGNMENT);
 }
 
-static void number(parser* p, scanner* s) {
+static void number(parser* p, scanner* s, bool _) {
   double v = strtod(p->prev.start, NULL);
   emit_constant(p, NUMBER_VAL(v));
 }
 
-static void chr(parser* p, scanner* s) {
+static void chr(parser* p, scanner* s, bool _) {
   char v = p->prev.start[p->prev.length-2];
   emit_constant(p, CHAR_VAL(v));
 }
 
-static void string(parser* p, scanner* s) {
+static void string(parser* p, scanner* s, bool _) {
   emit_constant(p, OBJ_VAL(copy_str(p->cvm,
                                     p->prev.start + 1,
                                     p->prev.length - 2)));
 }
 
-static void grouping(parser* p, scanner* s) {
+static void grouping(parser* p, scanner* s, bool _) {
   expression(p, s);
   consume(p, s, TOKEN_RIGHT_PAREN, "Expect ')' after expression.");
 }
 
-static void unary(parser* p, scanner* s) {
+static void unary(parser* p, scanner* s, bool _) {
   token_type op = p->prev.type;
 
   parse_precedence(p, s, PREC_UNARY);
@@ -149,7 +163,7 @@ static void unary(parser* p, scanner* s) {
   }
 }
 
-static void binary(parser* p, scanner* s) {
+static void binary(parser* p, scanner* s, bool _) {
   token_type op = p->prev.type;
 
   parse_rule* rule = get_rule(op);
@@ -175,7 +189,7 @@ static void binary(parser* p, scanner* s) {
   }
 }
 
-static void literal(parser* p, scanner* s) {
+static void literal(parser* p, scanner* s, bool _) {
   switch (p->prev.type) {
     case TOKEN_FALSE:  emit_byte(p, OP_FALSE); break;
     case TOKEN_TRUE:  emit_byte(p, OP_TRUE); break;
@@ -183,6 +197,8 @@ static void literal(parser* p, scanner* s) {
     default: return;
   }
 }
+
+static void variable(parser*, scanner*, bool can_assign);
 
 parse_rule rules[] = {
   { grouping, NULL,    PREC_CALL },       // TOKEN_LEFT_PAREN
@@ -210,7 +226,7 @@ parse_rule rules[] = {
   { NULL,     binary,  PREC_FACTOR },     // TOKEN_AMP
   { NULL,     binary,  PREC_FACTOR },     // TOKEN_SHIFTLEFT
   { NULL,     binary,  PREC_FACTOR },     // TOKEN_SHIFTRIGHT
-  { NULL,     NULL,    PREC_NONE },       // TOKEN_IDENTIFIER
+  { variable, NULL,    PREC_NONE },       // TOKEN_IDENTIFIER
   { string,   NULL,    PREC_NONE },       // TOKEN_STRING
   { number,   NULL,    PREC_NONE },       // TOKEN_NUMBER
   { chr,      NULL,    PREC_NONE },       // TOKEN_CHR
@@ -247,13 +263,105 @@ static void parse_precedence(parser* p, scanner* s, precedence prec) {
     return;
   }
 
-  prefix_rule(p, s);
+  bool can_assign = prec <= PREC_ASSIGNMENT;
+  prefix_rule(p, s, can_assign);
 
   while (prec <= get_rule(p->cur.type)->prec) {
     advance(p, s);
     parse_fn infix_rule = get_rule(p->prev.type)->infix;
-    infix_rule(p, s);
+    infix_rule(p, s, can_assign);
   }
+
+  if (can_assign && match(p, s, TOKEN_EQUAL)) {
+    error(p, "Invalid assignment target.");
+    expression(p, s);
+  }
+}
+
+static void print_statement(parser* p, scanner* s) {
+  expression(p, s);
+  consume(p, s, TOKEN_SEMICOLON, "Expect ';' after value.");
+  emit_byte(p, OP_PRINT);
+}
+
+static void expression_statement(parser* p, scanner* s) {
+  expression(p, s);
+  emit_byte(p, OP_POP);
+  consume(p, s, TOKEN_SEMICOLON, "Expect ';' after expression.");
+}
+
+static void statement(parser* p, scanner* s) {
+  if (match(p, s, TOKEN_PRINT)) print_statement(p, s);
+  else expression_statement(p, s);
+}
+
+static void synchronize(parser* p, scanner* s) {
+  p->panic_mode = false;
+
+  while (p->cur.type != TOKEN_EOF) {
+    if (p->prev.type == TOKEN_SEMICOLON) return;
+
+    switch (p->cur.type) {
+      case TOKEN_CLASS:
+      case TOKEN_FUN:
+      case TOKEN_VAR:
+      case TOKEN_FOR:
+      case TOKEN_IF:
+      case TOKEN_WHILE:
+      case TOKEN_PRINT:
+      case TOKEN_RETURN:
+        return;
+
+      default:
+        ;
+    }
+
+    advance(p, s);
+  }
+}
+
+static int identifier_constant(parser* p) {
+  return make_constant(p, OBJ_VAL(copy_str(p->cvm, p->prev.start, p->prev.length)));
+}
+
+static void named_variable(parser* p, scanner* s, bool can_assign) {
+  int arg = identifier_constant(p);
+
+  if (can_assign && match(p, s, TOKEN_EQUAL)) {
+    expression(p, s);
+    emit_bytes(p, OP_SET_GLOBAL, (uint8_t)arg);
+  } else emit_bytes(p, OP_GET_GLOBAL, (uint8_t)arg);
+}
+
+static void variable(parser* p, scanner* s, bool can_assign) {
+  named_variable(p, s, can_assign);
+}
+
+static int parse_variable(parser* p, scanner* s, const char* msg) {
+  consume(p, s, TOKEN_IDENTIFIER, msg);
+  return identifier_constant(p);
+}
+
+static void define_variable(parser* p, int global) {
+  emit_bytes(p, OP_DEFINE_GLOBAL, (uint8_t)global);
+}
+
+static void var_declaration(parser* p, scanner* s) {
+  int glob = parse_variable(p, s, "Expect variable name.");
+
+  if (match(p, s, TOKEN_EQUAL)) expression(p, s);
+  else emit_byte(p, OP_NIL);
+
+  consume(p, s, TOKEN_SEMICOLON, "Expect ';' after variable declaration.");
+
+  define_variable(p, glob);
+}
+
+static void declaration(parser* p, scanner* s) {
+  if (match(p, s, TOKEN_VAR)) var_declaration(p, s);
+  else statement(p, s);
+
+  if (p->panic_mode) synchronize(p, s);
 }
 
 bool compile(vm* cvm, const char* source, chunk* c) {
@@ -265,7 +373,7 @@ bool compile(vm* cvm, const char* source, chunk* c) {
   comp = c;
 
   advance(&p, s);
-  expression(&p, s);
+  while (!match(&p, s, TOKEN_EOF)) declaration(&p, s);
   consume(&p, s, TOKEN_EOF, "Expect end of expression.");
   free(s);
   end_compiler(&p);

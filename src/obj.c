@@ -49,9 +49,9 @@ static uint32_t hash_str(const char* key, int len) {
 
 obj_str* take_str(void* cvm, char* chars, int len) {
   uint32_t hash = hash_str(chars, len);
-  obj_str* interned = table_find_str(&vm.strings, chars, len, hash);
+  obj_str* interned = table_find_str(&((vm*)cvm)->strings, chars, len, hash);
   if (interned) {
-    FREE_ARRAY(char, chars, length);
+    FREE_ARRAY(char, chars, len);
     return interned;
   }
   return allocate_str((vm*)cvm, chars, len, hash);
@@ -59,7 +59,7 @@ obj_str* take_str(void* cvm, char* chars, int len) {
 
 obj_str* copy_str(void* cvm, const char* chars, int len) {
   uint32_t hash = hash_str(chars, len);
-  obj_str* interned = table_find_str(&vm.strings, chars, len, hash);
+  obj_str* interned = table_find_str(&((vm*)cvm)->strings, chars, len, hash);
   if (interned) return interned;
   return allocate_str((vm*)cvm, (char*)chars, len, hash);
 }
