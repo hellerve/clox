@@ -7,6 +7,8 @@
 #define DEBUG_PRINT_CODE
 #define DEBUG_TRACE_EXECUTION
 
+#define UINT8_COUNT (UINT8_MAX+1)
+
 typedef enum {
   OP_CONSTANT,
   OP_CONSTANT_LONG,
@@ -14,8 +16,10 @@ typedef enum {
   OP_TRUE,
   OP_FALSE,
   OP_POP,
+  OP_GET_LOCAL,
   OP_GET_GLOBAL,
   OP_DEFINE_GLOBAL,
+  OP_SET_LOCAL,
   OP_SET_GLOBAL,
   OP_ADD,
   OP_SUBTRACT,

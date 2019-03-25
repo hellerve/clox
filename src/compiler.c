@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "common.h"
 #include "compiler.h"
@@ -17,6 +18,17 @@ typedef struct {
   bool panic_mode;
 } parser;
 
+typedef struct {
+  token name;
+  int depth;
+} local;
+
+typedef struct {
+  local locals[UINT8_COUNT];
+  int localc;
+  int scope_depth;
+} compiler;
+
 typedef enum {
   PREC_NONE,
   PREC_ASSIGNMENT,  // =
@@ -31,7 +43,7 @@ typedef enum {
   PREC_PRIMARY
 } precedence;
 
-typedef void (*parse_fn)(parser*, scanner*, bool);
+typedef void (*parse_fn)(parser*, scanner*, compiler*, bool);
 
 typedef struct {
   parse_fn prefix;
@@ -40,6 +52,11 @@ typedef struct {
 } parse_rule;
 
 chunk* comp;
+
+static bool identifiers_equal(token* a, token* b) {
+  if (a->length != b->length) return false;
+  return memcmp(a->start, b->start, a->length) == 0;
+}
 
 static chunk* cur_chunk() {
   return comp;
@@ -122,38 +139,38 @@ static int make_constant(parser* p, value v) {
   return add_constant(cur_chunk(), v);
 }
 
-static void parse_precedence(parser*, scanner*, precedence);
+static void parse_precedence(parser*, scanner*, compiler*, precedence);
 static parse_rule* get_rule(token_type type);
 
-void expression(parser* p, scanner* s) {
-  parse_precedence(p, s, PREC_ASSIGNMENT);
+void expression(parser* p, scanner* s, compiler* c) {
+  parse_precedence(p, s, c, PREC_ASSIGNMENT);
 }
 
-static void number(parser* p, scanner* s, bool _) {
+static void number(parser* p, scanner* s, compiler* c, bool _) {
   double v = strtod(p->prev.start, NULL);
   emit_constant(p, NUMBER_VAL(v));
 }
 
-static void chr(parser* p, scanner* s, bool _) {
+static void chr(parser* p, scanner* s, compiler* c, bool _) {
   char v = p->prev.start[p->prev.length-2];
   emit_constant(p, CHAR_VAL(v));
 }
 
-static void string(parser* p, scanner* s, bool _) {
+static void string(parser* p, scanner* s, compiler* c, bool _) {
   emit_constant(p, OBJ_VAL(copy_str(p->cvm,
                                     p->prev.start + 1,
                                     p->prev.length - 2)));
 }
 
-static void grouping(parser* p, scanner* s, bool _) {
-  expression(p, s);
+static void grouping(parser* p, scanner* s, compiler* c, bool _) {
+  expression(p, s, c);
   consume(p, s, TOKEN_RIGHT_PAREN, "Expect ')' after expression.");
 }
 
-static void unary(parser* p, scanner* s, bool _) {
+static void unary(parser* p, scanner* s, compiler* c, bool _) {
   token_type op = p->prev.type;
 
-  parse_precedence(p, s, PREC_UNARY);
+  parse_precedence(p, s, c, PREC_UNARY);
 
   switch(op) {
     case TOKEN_MINUS: emit_byte(p, OP_NEGATE); break;
@@ -163,11 +180,11 @@ static void unary(parser* p, scanner* s, bool _) {
   }
 }
 
-static void binary(parser* p, scanner* s, bool _) {
+static void binary(parser* p, scanner* s, compiler* c, bool _) {
   token_type op = p->prev.type;
 
   parse_rule* rule = get_rule(op);
-  parse_precedence(p, s, (precedence)(rule->prec + 1));
+  parse_precedence(p, s, c, (precedence)(rule->prec + 1));
 
   switch (op) {
     case TOKEN_BANG_EQUAL:    emit_bytes(p, OP_EQUAL, OP_NOT); break;
@@ -189,7 +206,7 @@ static void binary(parser* p, scanner* s, bool _) {
   }
 }
 
-static void literal(parser* p, scanner* s, bool _) {
+static void literal(parser* p, scanner* s, compiler* c, bool _) {
   switch (p->prev.type) {
     case TOKEN_FALSE:  emit_byte(p, OP_FALSE); break;
     case TOKEN_TRUE:  emit_byte(p, OP_TRUE); break;
@@ -198,7 +215,8 @@ static void literal(parser* p, scanner* s, bool _) {
   }
 }
 
-static void variable(parser*, scanner*, bool can_assign);
+static void variable(parser*, scanner*, compiler* c, bool can_assign);
+static void declaration(parser* p, scanner* s, compiler* c);
 
 parse_rule rules[] = {
   { grouping, NULL,    PREC_CALL },       // TOKEN_LEFT_PAREN
@@ -254,7 +272,7 @@ static parse_rule* get_rule(token_type type) {
   return &rules[type];
 }
 
-static void parse_precedence(parser* p, scanner* s, precedence prec) {
+static void parse_precedence(parser* p, scanner* s, compiler* c, precedence prec) {
   advance(p, s);
   parse_fn prefix_rule = get_rule(p->prev.type)->prefix;
 
@@ -264,35 +282,52 @@ static void parse_precedence(parser* p, scanner* s, precedence prec) {
   }
 
   bool can_assign = prec <= PREC_ASSIGNMENT;
-  prefix_rule(p, s, can_assign);
+  prefix_rule(p, s, c, can_assign);
 
   while (prec <= get_rule(p->cur.type)->prec) {
     advance(p, s);
     parse_fn infix_rule = get_rule(p->prev.type)->infix;
-    infix_rule(p, s, can_assign);
+    infix_rule(p, s, c, can_assign);
   }
 
   if (can_assign && match(p, s, TOKEN_EQUAL)) {
     error(p, "Invalid assignment target.");
-    expression(p, s);
+    expression(p, s, c);
   }
 }
 
-static void print_statement(parser* p, scanner* s) {
-  expression(p, s);
+static void print_statement(parser* p, scanner* s, compiler* c) {
+  expression(p, s, c);
   consume(p, s, TOKEN_SEMICOLON, "Expect ';' after value.");
   emit_byte(p, OP_PRINT);
 }
 
-static void expression_statement(parser* p, scanner* s) {
-  expression(p, s);
+static void expression_statement(parser* p, scanner* s, compiler* c) {
+  expression(p, s, c);
   emit_byte(p, OP_POP);
   consume(p, s, TOKEN_SEMICOLON, "Expect ';' after expression.");
 }
 
-static void statement(parser* p, scanner* s) {
-  if (match(p, s, TOKEN_PRINT)) print_statement(p, s);
-  else expression_statement(p, s);
+static void block(parser* p, scanner* s, compiler* c) {
+  while (!check(p, TOKEN_RIGHT_BRACE) && !check(p, TOKEN_EOF)) declaration(p, s, c);
+
+  consume(p, s, TOKEN_RIGHT_BRACE, "Expect '}' after block.");
+}
+
+static void begin_scope(compiler* c) { c->scope_depth++; }
+static void end_scope(parser* p, compiler* c) {
+  c->scope_depth--;
+
+  while (c->localc > 0 && c->locals[c->localc-1].depth > c->scope_depth) {
+    emit_byte(p, OP_POP);
+    c->localc--;
+  }
+}
+
+static void statement(parser* p, scanner* s, compiler* c) {
+  if (match(p, s, TOKEN_PRINT)) print_statement(p, s, c);
+  else if (match(p, s, TOKEN_LEFT_BRACE)) { begin_scope(c); block(p, s, c); end_scope(p, c); }
+  else expression_statement(p, s, c);
 }
 
 static void synchronize(parser* p, scanner* s) {
@@ -324,48 +359,113 @@ static int identifier_constant(parser* p) {
   return make_constant(p, OBJ_VAL(copy_str(p->cvm, p->prev.start, p->prev.length)));
 }
 
-static void named_variable(parser* p, scanner* s, bool can_assign) {
-  int arg = identifier_constant(p);
+static int resolve_local(parser* p, compiler* c, token* name) {
+  for (int i = c->localc - 1; i >= 0; i--) {
+    local* l = &c->locals[i];
+    if (identifiers_equal(name, &l->name)) {
+      if (l->depth == -1) error(p, "Cannot read local variable in its own initializer.");
+      return i;
+    }
+  }
+
+  return -1;
+}
+
+static void named_variable(parser* p, scanner* s, compiler* c, bool can_assign) {
+  uint8_t getop, setop;
+  int arg = resolve_local(p, c, &p->prev);
+  if (arg == -1) {
+    arg = identifier_constant(p);
+    getop = OP_GET_GLOBAL;
+    setop = OP_SET_GLOBAL;
+  } else {
+    getop = OP_GET_LOCAL;
+    setop = OP_SET_LOCAL;
+  }
 
   if (can_assign && match(p, s, TOKEN_EQUAL)) {
-    expression(p, s);
-    emit_bytes(p, OP_SET_GLOBAL, (uint8_t)arg);
-  } else emit_bytes(p, OP_GET_GLOBAL, (uint8_t)arg);
+    expression(p, s, c);
+    emit_bytes(p, setop, (uint8_t)arg);
+  } else emit_bytes(p, getop, (uint8_t)arg);
 }
 
-static void variable(parser* p, scanner* s, bool can_assign) {
-  named_variable(p, s, can_assign);
+static void variable(parser* p, scanner* s, compiler* c, bool can_assign) {
+  named_variable(p, s, c, can_assign);
 }
 
-static int parse_variable(parser* p, scanner* s, const char* msg) {
+static void add_local(parser* p, compiler* c, token name) {
+  if (c->localc == UINT8_COUNT) {
+    error(p, "Too many local variables in block.");
+    return;
+  }
+
+  local* l = &c->locals[c->localc++];
+  l->name = name;
+  l->depth = -1;
+}
+
+static void declare_variable(parser* p, compiler* c) {
+  if (!c->scope_depth) return;
+
+  token* name = &p->prev;
+
+  for (int i = c->localc-1; i >= 0; i--) {
+    local* l = &c->locals[i];
+    if (l->depth != -1 && l->depth < c->scope_depth) break;
+    if (identifiers_equal(name, &l->name)) {
+      error(p, "Variable with this name already declared in this scope.");
+    }
+  }
+
+  add_local(p, c, *name);
+}
+
+static int parse_variable(parser* p, scanner* s, compiler* c, const char* msg) {
   consume(p, s, TOKEN_IDENTIFIER, msg);
+
+  declare_variable(p, c);
+  if (c->scope_depth > 0) return 0;
+
   return identifier_constant(p);
 }
 
-static void define_variable(parser* p, int global) {
+static void mark_initialized(compiler* c) {
+  if (!c->scope_depth) return;
+  c->locals[c->localc-1].depth = c->scope_depth;
+}
+
+static void define_variable(parser* p, compiler* c, int global) {
+  if (c->scope_depth > 0) { mark_initialized(c); return; }
   emit_bytes(p, OP_DEFINE_GLOBAL, (uint8_t)global);
 }
 
-static void var_declaration(parser* p, scanner* s) {
-  int glob = parse_variable(p, s, "Expect variable name.");
+static void var_declaration(parser* p, scanner* s, compiler* c) {
+  int glob = parse_variable(p, s, c, "Expect variable name.");
 
-  if (match(p, s, TOKEN_EQUAL)) expression(p, s);
+  if (match(p, s, TOKEN_EQUAL)) expression(p, s, c);
   else emit_byte(p, OP_NIL);
 
   consume(p, s, TOKEN_SEMICOLON, "Expect ';' after variable declaration.");
 
-  define_variable(p, glob);
+  define_variable(p, c, glob);
 }
 
-static void declaration(parser* p, scanner* s) {
-  if (match(p, s, TOKEN_VAR)) var_declaration(p, s);
-  else statement(p, s);
+static void declaration(parser* p, scanner* s, compiler* c) {
+  if (match(p, s, TOKEN_VAR)) var_declaration(p, s, c);
+  else statement(p, s, c);
 
   if (p->panic_mode) synchronize(p, s);
 }
 
+static void init_compiler(compiler* c) {
+  c->localc = 0;
+  c->scope_depth = 0;
+}
+
 bool compile(vm* cvm, const char* source, chunk* c) {
   scanner* s = init_scanner(source);
+  compiler com;
+  init_compiler(&com);
   parser p;
   p.errored = false;
   p.panic_mode = false;
@@ -373,7 +473,7 @@ bool compile(vm* cvm, const char* source, chunk* c) {
   comp = c;
 
   advance(&p, s);
-  while (!match(&p, s, TOKEN_EOF)) declaration(&p, s);
+  while (!match(&p, s, TOKEN_EOF)) declaration(&p, s, &com);
   consume(&p, s, TOKEN_EOF, "Expect end of expression.");
   free(s);
   end_compiler(&p);

@@ -38,6 +38,12 @@ static int constant_instruction(const char* name, chunk* c, int offs) {
   return offs + 2;
 }
 
+static int byte_instruction(const char* name, chunk* c, int offs) {
+  uint8_t slot = c->code[offs+1];
+  printf("%-16s %4d\n", name, slot);
+  return offs+2;
+}
+
 static int long_constant_instruction(const char* name, chunk* c, int offs) {
   uint32_t constant = c->code[offs+1] + (c->code[offs+2]<<8) + (c->code[offs+3]<<16);
   printf("%-16s %4d '", name, constant);
@@ -109,6 +115,10 @@ int disassemble_instruction(chunk* c, int offs) {
       return constant_instruction("get global", c, offs);
     case OP_SET_GLOBAL:
       return constant_instruction("set global", c, offs);
+    case OP_GET_LOCAL:
+      return byte_instruction("get local", c, offs);
+    case OP_SET_LOCAL:
+      return byte_instruction("set local", c, offs);
     default:
       printf("Unknown opcode %d\n", instruction);
       return offs + 1;

@@ -56,7 +56,7 @@ static void runtime_error(vm* cvm, const char* format, ...) {
   va_end(args);
   fputs("\n", stderr);
 
-  size_t instruction = cvm->ip - cvm->c->code;
+  size_t instruction = cvm->ip - cvm->c->code - 1;
   fprintf(stderr, "[line %d] in script\n",
           cvm->c->lines[instruction]);
 
@@ -179,6 +179,16 @@ static interpret_result run(vm* cvm) {
       case OP_TRUE:       push(cvm, BOOL_VAL(true)); break;
       case OP_FALSE:      push(cvm, BOOL_VAL(false)); break;
       case OP_POP:        pop(cvm); break;
+      case OP_GET_LOCAL: {
+        uint8_t slot = read_byte();
+        push(cvm, cvm->stack[slot]);
+        break;
+      }
+      case OP_SET_LOCAL: {
+        uint8_t slot = read_byte();
+        cvm->stack[slot] = peek(cvm, 0);
+        break;
+      }
       case OP_GET_GLOBAL: {
         obj_str* name = read_string();
         value v;
