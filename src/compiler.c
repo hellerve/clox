@@ -68,7 +68,7 @@ static void error_at(parser* p, token* t, const char* msg) {
   p->panic_mode = true;
   fprintf(stderr, "[line %d] Error", t->line);
 
-  if (t->type == TOKEN_EOF) fprintf(stderr, "at end");
+  if (t->type == TOKEN_EOF) fprintf(stderr, " at end");
   else if (t->type == TOKEN_ERROR) {}
   else fprintf(stderr, " at '%.*s'", t->length, t->start);
 
@@ -121,6 +121,32 @@ static void emit_byte(parser* p, uint8_t byte) {
 
 static void emit_return(parser* p) {
   emit_byte(p, OP_RETURN);
+}
+
+static int emit_jump(parser* p, uint8_t inst) {
+  emit_byte(p, inst);
+  emit_byte(p, 0xff);
+  emit_byte(p, 0xff);
+  return cur_chunk()->count-2;
+}
+
+static void emit_loop(parser* p, int loopstart) {
+  emit_byte(p, OP_LOOP);
+
+  int offs = cur_chunk()->count - loopstart + 2;
+  if (offs > UINT16_MAX) error(p, "Loop body too large.");
+
+  emit_byte(p, (offs >> 8) & 0xff);
+  emit_byte(p, offs & 0xff);
+}
+
+static void patch_jump(parser* p, int offs) {
+  int jump = cur_chunk()->count-offs-2;
+
+  if (jump > UINT16_MAX) error(p, "Too much code to jump over.");
+
+  cur_chunk()->code[offs] = (jump >> 8) & 0xff;
+  cur_chunk()->code[offs+1] = jump & 0xff;
 }
 
 static void end_compiler(parser* p) {
@@ -215,6 +241,25 @@ static void literal(parser* p, scanner* s, compiler* c, bool _) {
   }
 }
 
+static void and_(parser* p, scanner* s, compiler* c, bool _) {
+  int endj = emit_jump(p, OP_JUMP_IF_FALSE);
+  emit_byte(p, OP_POP);
+  parse_precedence(p, s, c, PREC_AND);
+
+  patch_jump(p, endj);
+}
+
+static void or_(parser* p, scanner* s, compiler* c, bool _) {
+  int elsej = emit_jump(p, OP_JUMP_IF_FALSE);
+  int endj = emit_jump(p, OP_JUMP);
+
+  patch_jump(p, elsej);
+  emit_byte(p, OP_POP);
+
+  parse_precedence(p, s, c, PREC_OR);
+  patch_jump(p, endj);
+}
+
 static void variable(parser*, scanner*, compiler* c, bool can_assign);
 static void declaration(parser* p, scanner* s, compiler* c);
 
@@ -248,7 +293,7 @@ parse_rule rules[] = {
   { string,   NULL,    PREC_NONE },       // TOKEN_STRING
   { number,   NULL,    PREC_NONE },       // TOKEN_NUMBER
   { chr,      NULL,    PREC_NONE },       // TOKEN_CHR
-  { NULL,     NULL,    PREC_AND },        // TOKEN_AND
+  { NULL,     and_,    PREC_AND },        // TOKEN_AND
   { NULL,     NULL,    PREC_NONE },       // TOKEN_CLASS
   { NULL,     NULL,    PREC_NONE },       // TOKEN_ELSE
   { literal,  NULL,    PREC_NONE },       // TOKEN_FALSE
@@ -256,7 +301,7 @@ parse_rule rules[] = {
   { NULL,     NULL,    PREC_NONE },       // TOKEN_FOR
   { NULL,     NULL,    PREC_NONE },       // TOKEN_IF
   { literal,  NULL,    PREC_NONE },       // TOKEN_NIL
-  { NULL,     NULL,    PREC_OR },         // TOKEN_OR
+  { NULL,     or_,     PREC_OR },         // TOKEN_OR
   { NULL,     NULL,    PREC_NONE },       // TOKEN_PRINT
   { NULL,     NULL,    PREC_NONE },       // TOKEN_RETURN
   { NULL,     NULL,    PREC_NONE },       // TOKEN_SUPER
@@ -324,11 +369,99 @@ static void end_scope(parser* p, compiler* c) {
   }
 }
 
+static void if_statement(parser*, scanner*, compiler*);
+static void while_statement(parser*, scanner*, compiler*);
+static void for_statement(parser*, scanner*, compiler*);
+
 static void statement(parser* p, scanner* s, compiler* c) {
   if (match(p, s, TOKEN_PRINT)) print_statement(p, s, c);
+  else if(match(p, s, TOKEN_IF)) if_statement(p, s, c);
+  else if(match(p, s, TOKEN_WHILE)) while_statement(p, s, c);
+  else if(match(p, s, TOKEN_FOR)) for_statement(p, s, c);
   else if (match(p, s, TOKEN_LEFT_BRACE)) { begin_scope(c); block(p, s, c); end_scope(p, c); }
   else expression_statement(p, s, c);
 }
+
+static void var_declaration(parser*, scanner*, compiler*);
+
+static void for_statement(parser* p, scanner* s, compiler* c) {
+  begin_scope(c);
+  consume(p, s, TOKEN_LEFT_PAREN, "Expect '(' after 'for'.");
+  if (match(p, s, TOKEN_VAR)) var_declaration(p, s, c);
+  else if (match(p, s, TOKEN_SEMICOLON)) {}
+  else expression_statement(p, s, c);
+
+  int loopstart = cur_chunk()->count;
+
+  int exitj = -1;
+
+  if (!match(p, s, TOKEN_SEMICOLON)) {
+    expression(p, s, c);
+    consume(p, s, TOKEN_SEMICOLON, "Expect ';' after loop condition.");
+
+    exitj = emit_jump(p, OP_JUMP_IF_FALSE);
+    emit_byte(p, OP_POP);
+  }
+
+  if (!match(p, s, TOKEN_RIGHT_PAREN)) {
+    int bodyj = emit_jump(p, OP_JUMP);
+
+    int incrstart = cur_chunk()->count;
+    expression(p, s, c);
+    emit_byte(p, OP_POP);
+    consume(p, s, TOKEN_RIGHT_PAREN, "Expect ')' after for clauses.");
+
+    emit_loop(p, loopstart);
+    loopstart = incrstart;
+    patch_jump(p, bodyj);
+  }
+
+  statement(p, s, c);
+
+  emit_loop(p, loopstart);
+  if (exitj != -1) {
+    patch_jump(p, exitj);
+    emit_byte(p, OP_POP);
+  }
+  end_scope(p, c);
+}
+
+static void while_statement(parser* p, scanner* s, compiler* c) {
+  int loopstart = cur_chunk()->count;
+  consume(p, s, TOKEN_LEFT_PAREN, "Expect '(' after 'while'.");
+  expression(p, s, c);
+  consume(p, s, TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
+
+  int exitj = emit_jump(p, OP_JUMP_IF_FALSE);
+
+  emit_byte(p, OP_POP);
+  statement(p, s, c);
+
+  emit_loop(p, loopstart);
+
+  patch_jump(p, exitj);
+  emit_byte(p, OP_POP);
+}
+
+static void if_statement(parser* p, scanner* s, compiler* c) {
+  consume(p, s, TOKEN_LEFT_PAREN, "Expect '(' after 'if'.");
+  expression(p, s, c);
+  consume(p, s, TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
+
+  int thenj = emit_jump(p, OP_JUMP_IF_FALSE);
+  emit_byte(p, OP_POP);
+  statement(p, s, c);
+
+  int elsej = emit_jump(p, OP_JUMP);
+
+  patch_jump(p, thenj);
+  emit_byte(p, OP_POP);
+
+  if (match(p, s, TOKEN_ELSE)) statement(p, s, c);
+  patch_jump(p, elsej);
+}
+
+
 
 static void synchronize(parser* p, scanner* s) {
   p->panic_mode = false;

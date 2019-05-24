@@ -65,6 +65,13 @@ int get_line(int* lines, int count, int offs) {
   return i ? lines[i-1] : 1;
 }
 
+static int jump_instruction(const char* name, int sign, chunk* c, int offs) {
+  uint16_t jump = (uint16_t)(c->code[offs+1]<<8);
+  jump |= c->code[offs+2];
+  printf("%-16s %4d -> %d\n", name, offs, offs+3+sign*jump);
+  return offs+3;
+}
+
 int disassemble_instruction(chunk* c, int offs) {
   uint8_t instruction = c->code[offs];
   int line = get_line(c->lines, c->lines_count, offs);
@@ -119,6 +126,12 @@ int disassemble_instruction(chunk* c, int offs) {
       return byte_instruction("get local", c, offs);
     case OP_SET_LOCAL:
       return byte_instruction("set local", c, offs);
+    case OP_JUMP:
+      return jump_instruction("jump", 1, c, offs);
+    case OP_LOOP:
+      return jump_instruction("loop", -1, c, offs);
+    case OP_JUMP_IF_FALSE:
+      return jump_instruction("jump if false", 1, c, offs);
     default:
       printf("Unknown opcode %d\n", instruction);
       return offs + 1;

@@ -137,6 +137,7 @@ static interpret_result run(vm* cvm) {
       push(cvm, value_type(a op b)); \
     }
 #define read_byte() (*cvm->ip++)
+#define read_short() (cvm->ip += 2, (uint16_t)((cvm->ip[-2] <<8) | cvm->ip[-1]))
 #define read_constant() (cvm->c->constants.values[read_byte()])
 #define read_long_constant() (cvm->c->constants.values[read_byte() + (read_byte()<<8) + (read_byte()<<16)])
 #define read_string() (AS_STRING(read_constant()))
@@ -161,6 +162,19 @@ static interpret_result run(vm* cvm) {
       case OP_PRINT: {
         print_value(pop(cvm));
         puts("");
+        break;
+      }
+      case OP_LOOP: {
+        cvm->ip -= read_short();
+        break;
+      }
+      case OP_JUMP: {
+        cvm->ip += read_short();
+        break;
+      }
+      case OP_JUMP_IF_FALSE: {
+        uint16_t offs = read_short();
+        if (is_falsy(peek(cvm, 0))) cvm->ip += offs;
         break;
       }
       case OP_RETURN: {
@@ -215,7 +229,6 @@ static interpret_result run(vm* cvm) {
           runtime_error(cvm, "Undefined variable '%s'.", name->chars);
           return INTERPRET_RUNTIME_ERROR;
         }
-        pop(cvm);
         break;
       }
       case OP_ADD: {
@@ -266,6 +279,7 @@ static interpret_result run(vm* cvm) {
 
 #undef binary_op
 #undef read_byte
+#undef read_short
 #undef read_constant
 #undef read_long_constant
 #undef read_string
